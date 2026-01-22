@@ -65,8 +65,7 @@ libc_bitflags!(
                   linux_android,
                   solarish,
                   apple_targets,
-                  target_os = "fuchsia",
-                  target_os = "netbsd"))]
+                  target_os = "fuchsia"))]
         IFF_NOTRAILERS as IflagsType;
         /// Interface manages own routes.
         #[cfg(any(target_os = "dragonfly"))]
