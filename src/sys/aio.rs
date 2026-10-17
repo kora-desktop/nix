@@ -37,7 +37,7 @@ use std::{
 };
 
 use libc::off_t;
-use pin_utils::unsafe_pinned;
+use pin_project_lite::pin_project;
 
 use crate::{
     errno::Errno,
@@ -118,8 +118,6 @@ struct AioCb<'a> {
 }
 
 impl<'a> AioCb<'a> {
-    pin_utils::unsafe_unpinned!(aiocb: LibcAiocb);
-
     fn aio_return(mut self: Pin<&mut Self>) -> Result<usize> {
         self.in_progress = false;
         unsafe {
@@ -163,7 +161,7 @@ impl<'a> AioCb<'a> {
     }
 
     fn error(self: Pin<&mut Self>) -> Result<()> {
-        let r = unsafe { libc::aio_error(&self.aiocb().0) };
+        let r = unsafe { libc::aio_error(&self.aiocb.0) };
         match r {
             0 => Ok(()),
             num if num > 0 => Err(Errno::from_raw(num)),
@@ -365,11 +363,11 @@ pub trait Aio {
 macro_rules! aio_methods {
     () => {
         fn cancel(self: Pin<&mut Self>) -> Result<AioCancelStat> {
-            self.aiocb().cancel()
+            self.project().aiocb.cancel()
         }
 
         fn error(self: Pin<&mut Self>) -> Result<()> {
-            self.aiocb().error()
+            self.project().aiocb.error()
         }
 
         fn fd(&self) -> BorrowedFd<'a> {
@@ -398,18 +396,20 @@ macro_rules! aio_methods {
         aio_methods!();
 
         fn aio_return(self: Pin<&mut Self>) -> Result<<Self as Aio>::Output> {
-            self.aiocb().aio_return()
+            self.project().aiocb.aio_return()
         }
 
         fn submit(mut self: Pin<&mut Self>) -> Result<()> {
-            let p: *mut libc::aiocb = &mut self.as_mut().aiocb().aiocb.0;
+            let p: *mut libc::aiocb =
+                &mut self.as_mut().project().aiocb.get_mut().aiocb.0;
             Errno::result({ unsafe { libc::$func(p) } }).map(|_| {
-                self.aiocb().set_in_progress();
+                self.as_mut().project().aiocb.set_in_progress();
             })
         }
     };
 }
 
+pin_project! {
 /// An asynchronous version of `fsync(2)`.
 ///
 /// # References
@@ -434,16 +434,17 @@ macro_rules! aio_methods {
 /// }
 /// aiof.as_mut().aio_return().expect("aio_fsync failed late");
 /// ```
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct AioFsync<'a> {
-    aiocb: AioCb<'a>,
-    _pin: PhantomPinned,
+    #[derive(Debug)]
+    #[repr(transparent)]
+    pub struct AioFsync<'a> {
+        #[pin]
+        aiocb: AioCb<'a>,
+        #[pin]
+        _pin: PhantomPinned,
+    }
 }
 
 impl<'a> AioFsync<'a> {
-    unsafe_pinned!(aiocb: AioCb<'a>);
-
     /// Returns the operation's fsync mode: data and metadata or data only?
     pub fn mode(&self) -> AioFsyncMode {
         AioFsyncMode::try_from(self.aiocb.aiocb.0.aio_lio_opcode).unwrap()
@@ -484,15 +485,15 @@ impl<'a> Aio for AioFsync<'a> {
     aio_methods!();
 
     fn aio_return(self: Pin<&mut Self>) -> Result<()> {
-        self.aiocb().aio_return().map(drop)
+        self.project().aiocb.aio_return().map(drop)
     }
 
     fn submit(mut self: Pin<&mut Self>) -> Result<()> {
-        let aiocb = &mut self.as_mut().aiocb().aiocb.0;
+        let aiocb = &mut self.as_mut().project().aiocb.get_mut().aiocb.0;
         let mode = mem::replace(&mut aiocb.aio_lio_opcode, 0);
         let p: *mut libc::aiocb = aiocb;
         Errno::result(unsafe { libc::aio_fsync(mode, p) }).map(|_| {
-            self.aiocb().set_in_progress();
+            self.as_mut().project().aiocb.set_in_progress();
         })
     }
 }
@@ -505,6 +506,7 @@ impl AsRef<libc::aiocb> for AioFsync<'_> {
     }
 }
 
+pin_project! {
 /// Asynchronously reads from a file descriptor into a buffer
 ///
 /// # References
@@ -546,17 +548,18 @@ impl AsRef<libc::aiocb> for AioFsync<'_> {
 /// }
 /// assert_eq!(rbuf, b"cdef");
 /// ```
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct AioRead<'a> {
-    aiocb: AioCb<'a>,
-    _data: PhantomData<&'a [u8]>,
-    _pin: PhantomPinned,
+    #[derive(Debug)]
+    #[repr(transparent)]
+    pub struct AioRead<'a> {
+        #[pin]
+        aiocb: AioCb<'a>,
+        _data: PhantomData<&'a [u8]>,
+        #[pin]
+        _pin: PhantomPinned,
+    }
 }
 
 impl<'a> AioRead<'a> {
-    unsafe_pinned!(aiocb: AioCb<'a>);
-
     /// Returns the requested length of the aio operation in bytes
     ///
     /// This method returns the *requested* length of the operation.  To get the
@@ -620,6 +623,8 @@ impl AsRef<libc::aiocb> for AioRead<'_> {
     }
 }
 
+#[cfg(target_os = "freebsd")]
+pin_project! {
 /// Asynchronously reads from a file descriptor into a scatter/gather list of buffers.
 ///
 /// # References
@@ -665,19 +670,19 @@ impl AsRef<libc::aiocb> for AioRead<'_> {
 /// assert_eq!(rbuf0, b"cdef");
 /// assert_eq!(rbuf1, b"12");
 /// ```
-#[cfg(target_os = "freebsd")]
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct AioReadv<'a> {
-    aiocb: AioCb<'a>,
-    _data: PhantomData<&'a [&'a [u8]]>,
-    _pin: PhantomPinned,
+    #[derive(Debug)]
+    #[repr(transparent)]
+    pub struct AioReadv<'a> {
+        #[pin]
+        aiocb: AioCb<'a>,
+        _data: PhantomData<&'a [&'a [u8]]>,
+        #[pin]
+        _pin: PhantomPinned,
+    }
 }
 
 #[cfg(target_os = "freebsd")]
 impl<'a> AioReadv<'a> {
-    unsafe_pinned!(aiocb: AioCb<'a>);
-
     /// Returns the number of buffers the operation will read into.
     pub fn iovlen(&self) -> usize {
         self.aiocb.aiocb.0.aio_nbytes
@@ -744,6 +749,7 @@ impl AsRef<libc::aiocb> for AioReadv<'_> {
     }
 }
 
+pin_project! {
 /// Asynchronously writes from a buffer to a file descriptor
 ///
 /// # References
@@ -777,17 +783,18 @@ impl AsRef<libc::aiocb> for AioReadv<'_> {
 /// }
 /// assert_eq!(aiow.as_mut().aio_return().unwrap(), WBUF.len());
 /// ```
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct AioWrite<'a> {
-    aiocb: AioCb<'a>,
-    _data: PhantomData<&'a [u8]>,
-    _pin: PhantomPinned,
+    #[derive(Debug)]
+    #[repr(transparent)]
+    pub struct AioWrite<'a> {
+        #[pin]
+        aiocb: AioCb<'a>,
+        _data: PhantomData<&'a [u8]>,
+        #[pin]
+        _pin: PhantomPinned,
+    }
 }
 
 impl<'a> AioWrite<'a> {
-    unsafe_pinned!(aiocb: AioCb<'a>);
-
     /// Returns the requested length of the aio operation in bytes
     ///
     /// This method returns the *requested* length of the operation.  To get the
@@ -855,6 +862,8 @@ impl AsRef<libc::aiocb> for AioWrite<'_> {
     }
 }
 
+#[cfg(target_os = "freebsd")]
+pin_project! {
 /// Asynchronously writes from a scatter/gather list of buffers to a file descriptor.
 ///
 /// # References
@@ -893,19 +902,19 @@ impl AsRef<libc::aiocb> for AioWrite<'_> {
 /// }
 /// assert_eq!(aiow.as_mut().aio_return().unwrap(), len);
 /// ```
-#[cfg(target_os = "freebsd")]
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct AioWritev<'a> {
-    aiocb: AioCb<'a>,
-    _data: PhantomData<&'a [&'a [u8]]>,
-    _pin: PhantomPinned,
+    #[derive(Debug)]
+    #[repr(transparent)]
+    pub struct AioWritev<'a> {
+        #[pin]
+        aiocb: AioCb<'a>,
+        _data: PhantomData<&'a [&'a [u8]]>,
+        #[pin]
+        _pin: PhantomPinned,
+    }
 }
 
 #[cfg(target_os = "freebsd")]
 impl<'a> AioWritev<'a> {
-    unsafe_pinned!(aiocb: AioCb<'a>);
-
     /// Returns the number of buffers the operation will read into.
     pub fn iovlen(&self) -> usize {
         self.aiocb.aiocb.0.aio_nbytes
