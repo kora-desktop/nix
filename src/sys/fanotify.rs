@@ -650,10 +650,19 @@ impl Fanotify {
             while remaining_len > 0 {
                 let header_info_type =
                     unsafe { buffer.as_ptr().add(current_event_offset).read() };
-                // The +2 here represents the offset between the info_type and the length (which is 2 u8s apart)
+                // The header is { u8 info_type; u8 pad; u16 len }, so the length is 2 bytes in.
                 let info_type_length = unsafe {
-                    buffer.as_ptr().add(current_event_offset + 2).read()
+                    buffer
+                        .as_ptr()
+                        .add(current_event_offset + 2)
+                        .cast::<u16>()
+                        .read_unaligned()
                 };
+                if info_type_length == 0
+                    || u32::from(info_type_length) > remaining_len
+                {
+                    break;
+                }
 
                 let info_record = match header_info_type {
                     // FanotifyFidRecord can be returned for any of the following info_type.

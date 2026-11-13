@@ -9,7 +9,9 @@ use std::fs::{read_link, read_to_string, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
+use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 #[test]
 /// Run fanotify tests sequentially to avoid tmp files races
@@ -155,6 +157,52 @@ fn test_fanotify_notifications_with_info_records() {
         event.mask(),
         MaskFlags::FAN_OPEN | MaskFlags::FAN_CLOSE_NOWRITE
     );
+}
+
+#[test]
+/// Needs no capability: unprivileged groups may report names on inode marks.
+pub fn test_fanotify_long_names() {
+    let group = Fanotify::init(
+        InitFlags::FAN_CLASS_NOTIF | InitFlags::FAN_REPORT_DFID_NAME,
+        EventFFlags::O_RDONLY,
+    )
+    .unwrap();
+    let tempdir = tempfile::tempdir().unwrap();
+    group
+        .mark(
+            MarkFlags::FAN_MARK_ADD,
+            MaskFlags::FAN_CREATE,
+            AT_FDCWD,
+            Some(tempdir.path()),
+        )
+        .unwrap();
+
+    // An info record longer than 255 bytes must be read with its 16-bit length.
+    let lengths = [10, 200, 219, 220, 223, 224, 240, 255];
+    for len in lengths {
+        File::create(tempdir.path().join("a".repeat(len))).unwrap();
+    }
+
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let mut names = Vec::new();
+        while names.len() < lengths.len() {
+            let events = group.read_events_with_info_records().unwrap();
+            for (_, records) in events {
+                for record in records {
+                    if let FanotifyInfoRecord::Fid(fid) = record {
+                        names.push(fid.name().map(str::len));
+                    }
+                }
+            }
+        }
+        tx.send(names).unwrap();
+    });
+    let names = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("reading the events should not hang");
+    let expected: Vec<_> = lengths.iter().map(|len| Some(*len)).collect();
+    assert_eq!(names, expected);
 }
 
 fn test_fanotify_responses() {
