@@ -121,7 +121,7 @@ impl TryFrom<i32> for SockType {
     }
 }
 
-/// Constants used in [`socket`](fn.socket.html) and [`socketpair`](fn.socketpair.html)
+/// Constants used in [`socket`] and [`socketpair`]
 /// to specify the protocol to use.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -363,7 +363,7 @@ libc_bitflags! {
         /// This flag is useful for the same reasons as the `O_CLOEXEC` flag of
         /// [open(2)](https://pubs.opengroup.org/onlinepubs/9699919799/functions/open.html).
         ///
-        /// Only used in [`recvmsg`](fn.recvmsg.html) function.
+        /// Only used in [`recvmsg`] function.
         #[cfg(any(linux_android, freebsdlike, netbsdlike))]
         MSG_CMSG_CLOEXEC;
         /// Requests not to send `SIGPIPE` errors when the other end breaks the connection.
@@ -645,7 +645,7 @@ feature! {
 #![feature = "uio"]
 
 /// Create a buffer large enough for storing some control messages as returned
-/// by [`recvmsg`](fn.recvmsg.html).
+/// by [`recvmsg`].
 ///
 /// # Examples
 ///
@@ -1753,7 +1753,7 @@ pub fn sendmsg<S>(fd: RawFd, iov: &[IoSlice<'_>], cmsgs: &[ControlMessage],
 /// `Vec` with numbers of sent bytes on each sent message.
 ///
 /// # References
-/// [`sendmsg`](fn.sendmsg.html)
+/// [`sendmsg`]
 #[cfg(any(linux_android, target_os = "freebsd", target_os = "netbsd"))]
 pub fn sendmmsg<'a, XS, AS, C, I, S>(
     fd: RawFd,

@@ -7,8 +7,8 @@ use crate::Result;
 
 /// This is a wrapper around `libc::pollfd`.
 ///
-/// It's meant to be used as an argument to the [`poll`](fn.poll.html) and
-/// [`ppoll`](fn.ppoll.html) functions to specify the events of interest
+/// It's meant to be used as an argument to the [`poll`] and
+/// `ppoll` functions to specify the events of interest
 /// for a specific file descriptor.
 ///
 /// After a call to `poll` or `ppoll`, the events that occurred can be
@@ -179,7 +179,7 @@ libc_bitflags! {
 /// `poll` waits for one of a set of file descriptors to become ready to perform I/O.
 /// ([`poll(2)`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/poll.html))
 ///
-/// `fds` contains all [`PollFd`](struct.PollFd.html) to poll.
+/// `fds` contains all [`PollFd`] to poll.
 /// The function will return as soon as any event occur for any of these `PollFd`s.
 ///
 /// The `timeout` argument specifies the number of milliseconds that `poll()`
