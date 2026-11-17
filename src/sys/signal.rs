@@ -423,9 +423,7 @@ pub const SIGPOLL : Signal = SIGIO;
 pub const SIGUNUSED : Signal = SIGSYS;
 
 cfg_if! {
-    if #[cfg(target_os = "redox")] {
-        type SaFlags_t = libc::c_ulong;
-    } else if #[cfg(target_env = "uclibc")] {
+    if #[cfg(target_env = "uclibc")] {
         type SaFlags_t = libc::c_ulong;
     } else {
         type SaFlags_t = libc::c_int;
@@ -750,7 +748,7 @@ impl<'a> IntoIterator for &'a SigSet {
 }
 
 /// A signal handler.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub enum SigHandler {
     /// Default signal handling.
     SigDfl,
@@ -923,12 +921,12 @@ pub unsafe fn sigaction(signal: Signal, sigaction: &SigAction) -> Result<SigActi
 /// Installs `handler` for the given `signal`, returning the previous signal
 /// handler. `signal` should only be used following another call to `signal` or
 /// if the current handler is the default. The return value of `signal` is
-/// undefined after setting the handler with [`sigaction`][SigActionFn].
+/// undefined after setting the handler with [`sigaction`].
 ///
 /// # Safety
 ///
 /// If the pointer to the previous signal handler is invalid, undefined
-/// behavior could be invoked when casting it back to a [`SigAction`][SigActionStruct].
+/// behavior could be invoked when casting it back to a [`SigAction`].
 ///
 /// # Examples
 ///
@@ -960,16 +958,14 @@ pub unsafe fn sigaction(signal: Signal, sigaction: &SigAction) -> Result<SigActi
 ///
 /// # Errors
 ///
-/// Returns [`Error(Errno::EOPNOTSUPP)`] if `handler` is
-/// [`SigAction`][SigActionStruct]. Use [`sigaction`][SigActionFn] instead.
+/// Returns [`Error(Errno::EOPNOTSUPP)`](Errno::EOPNOTSUPP) if `handler` is
+/// [`SigAction`]. Use [`sigaction`] instead.
 ///
 /// `signal` also returns any error from `libc::signal`, such as when an attempt
 /// is made to catch a signal that cannot be caught or to ignore a signal that
 /// cannot be ignored.
 ///
 /// [`Error::UnsupportedOperation`]: ../../enum.Error.html#variant.UnsupportedOperation
-/// [SigActionStruct]: struct.SigAction.html
-/// [sigactionFn]: fn.sigaction.html
 pub unsafe fn signal(signal: Signal, handler: SigHandler) -> Result<SigHandler> {
     let signal = signal as libc::c_int;
     let res = match handler {
@@ -1066,7 +1062,7 @@ pub fn sigprocmask(how: SigmaskHow, set: Option<&SigSet>, oldset: Option<&mut Si
 ///   - If less than `-1`, the signal is sent to all processes whose
 ///     process group ID is equal to the absolute value of `pid`.
 /// * `signal` - Signal to send. If `None`, error checking is performed
-///              but no signal is actually sent.
+///   but no signal is actually sent.
 ///
 /// See Also
 /// [`kill(2)`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/kill.html)
