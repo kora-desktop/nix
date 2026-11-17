@@ -160,6 +160,8 @@ fn test_fanotify_notifications_with_info_records() {
 }
 
 #[test]
+// QEMU user mode has no fanotify_init: it returns ENOSYS.
+#[cfg_attr(qemu, ignore)]
 /// Needs no capability: unprivileged groups may report names on inode marks.
 pub fn test_fanotify_long_names() {
     let group = Fanotify::init(
