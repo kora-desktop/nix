@@ -241,6 +241,8 @@ fn test_so_type_unknown() {
     use nix::errno::Errno;
 
     require_capability!("test_so_type", CAP_NET_RAW);
+    // SOCK_PACKET is deprecated, but since it is used for testing here, we allow it
+    #[allow(deprecated)]
     let raw_fd = unsafe { libc::socket(libc::AF_PACKET, libc::SOCK_PACKET, 0) };
     assert!(raw_fd >= 0, "Error opening socket: {}", nix::Error::last());
     let sockfd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
@@ -271,11 +273,7 @@ fn test_tcp_congestion() {
     let val = getsockopt(&fd, sockopt::TcpCongestion).unwrap();
     let bytes = val.as_os_str().as_bytes();
     for b in bytes.iter() {
-        assert_ne!(
-            *b, 0,
-            "OsString should contain no embedded NULs: {:?}",
-            val
-        );
+        assert_ne!(*b, 0, "OsString should contain no embedded NULs: {val:?}");
     }
     setsockopt(&fd, sockopt::TcpCongestion, &val).unwrap();
 
@@ -487,7 +485,7 @@ fn test_dontfrag_opts() {
 }
 
 #[test]
-#[cfg(any(linux_android, apple_targets))]
+#[cfg(any(all(linux_android, not(target_env = "uclibc")), apple_targets))]
 // Disable the test under emulation because it fails in Cirrus-CI.  Lack
 // of QEMU support is suspected.
 #[cfg_attr(qemu, ignore)]
@@ -682,7 +680,7 @@ fn test_ts_clock_monotonic() {
 }
 
 #[test]
-#[cfg(linux_android)]
+#[cfg(all(linux_android, not(target_env = "uclibc")))]
 // Disable the test under emulation because it fails with ENOPROTOOPT in CI
 // on cross target. Lack of QEMU support is suspected.
 #[cfg_attr(qemu, ignore)]
@@ -897,7 +895,7 @@ fn test_ktls() {
 }
 
 #[test]
-#[cfg(apple_targets)]
+#[cfg(target_os = "macos")]
 fn test_utun_ifname() {
     skip_if_not_root!("test_utun_ifname");
 

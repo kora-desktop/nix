@@ -60,7 +60,7 @@ pub use self::addr::{SockaddrIn, SockaddrIn6};
 pub use crate::sys::socket::addr::alg::AlgAddr;
 #[cfg(linux_android)]
 pub use crate::sys::socket::addr::netlink::NetlinkAddr;
-#[cfg(apple_targets)]
+#[cfg(target_os = "macos")]
 #[cfg(feature = "ioctl")]
 pub use crate::sys::socket::addr::sys_control::SysControlAddr;
 #[cfg(any(linux_android, apple_targets))]
@@ -121,7 +121,7 @@ impl TryFrom<i32> for SockType {
     }
 }
 
-/// Constants used in [`socket`](fn.socket.html) and [`socketpair`](fn.socketpair.html)
+/// Constants used in [`socket`] and [`socketpair`]
 /// to specify the protocol to use.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -135,7 +135,7 @@ pub enum SockProtocol {
     Raw = libc::IPPROTO_RAW,
     /// Allows applications to configure and control a KEXT
     /// ([ref](https://developer.apple.com/library/content/documentation/Darwin/Conceptual/NKEConceptual/control/control.html))
-    #[cfg(apple_targets)]
+    #[cfg(target_os = "macos")]
     KextControl = libc::SYSPROTO_CONTROL,
     /// Receives routing and link updates and may be used to modify the routing tables (both IPv4 and IPv6), IP addresses, link
     // parameters, neighbor setups, queueing disciplines, traffic classes and packet classifiers
@@ -363,7 +363,7 @@ libc_bitflags! {
         /// This flag is useful for the same reasons as the `O_CLOEXEC` flag of
         /// [open(2)](https://pubs.opengroup.org/onlinepubs/9699919799/functions/open.html).
         ///
-        /// Only used in [`recvmsg`](fn.recvmsg.html) function.
+        /// Only used in [`recvmsg`] function.
         #[cfg(any(linux_android, freebsdlike, netbsdlike))]
         MSG_CMSG_CLOEXEC;
         /// Requests not to send `SIGPIPE` errors when the other end breaks the connection.
@@ -645,7 +645,7 @@ feature! {
 #![feature = "uio"]
 
 /// Create a buffer large enough for storing some control messages as returned
-/// by [`recvmsg`](fn.recvmsg.html).
+/// by [`recvmsg`].
 ///
 /// # Examples
 ///
@@ -699,7 +699,7 @@ impl<S> RecvMsg<'_, '_, S> {
     /// Iterate over the valid control messages pointed to by this msghdr. If
     /// allocated space for CMSGs was too small it is not safe to iterate,
     /// instead return an `Error::ENOBUFS` error.
-    pub fn cmsgs(&self) -> Result<CmsgIterator> {
+    pub fn cmsgs(&self) -> Result<CmsgIterator<'_>> {
 
         if self.mhdr.msg_flags & MSG_CTRUNC == MSG_CTRUNC {
             return Err(Errno::ENOBUFS);
@@ -770,7 +770,9 @@ pub enum ControlMessageOwned {
     ///
     /// # Examples
     ///
-    /// ```
+#[cfg_attr(all(target_env = "musl", target_pointer_width = "32"), doc = "See <https://github.com/nix-rust/nix/issues/2698> for notes regarding 32-bit musl")]
+#[cfg_attr(all(target_env = "musl", target_pointer_width = "32"), doc = "```no_run")]
+#[cfg_attr(any(not(target_env = "musl"), target_pointer_width = "64"), doc="```")]
     /// # #[macro_use] extern crate nix;
     /// # use nix::sys::socket::*;
     /// # use nix::sys::time::*;
@@ -1108,7 +1110,10 @@ impl ControlMessageOwned {
                 let (err, addr) = unsafe { Self::recv_err_helper::<sockaddr_in6>(p, len) };
                 ControlMessageOwned::Ipv6RecvErr(err, addr)
             },
-            #[cfg(any(linux_android, target_os = "freebsd"))]
+            #[cfg(any(
+                all(linux_android, not(target_env = "uclibc")),
+                target_os = "freebsd"
+            ))]
             #[cfg(feature = "net")]
             (libc::IPPROTO_IPV6, libc::IPV6_ORIGDSTADDR) => {
                 let dl = unsafe { ptr::read_unaligned(p as *const libc::sockaddr_in6) };
@@ -1751,7 +1756,7 @@ pub fn sendmsg<S>(fd: RawFd, iov: &[IoSlice<'_>], cmsgs: &[ControlMessage],
 /// `Vec` with numbers of sent bytes on each sent message.
 ///
 /// # References
-/// [`sendmsg`](fn.sendmsg.html)
+/// [`sendmsg`]
 #[cfg(any(linux_android, target_os = "freebsd", target_os = "netbsd"))]
 pub fn sendmmsg<'a, XS, AS, C, I, S>(
     fd: RawFd,
